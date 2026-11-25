@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Invoice Maker</title>
+<style>
+  :root { --bg:#f3f4f6; --card:#fff; --ink:#111827; --muted:#6b7280; --line:#e5e7eb; --brand:#2563eb; --danger:#dc2626; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--ink); }
+  .app { display:grid; grid-template-columns:420px 1fr; gap:20px; padding:20px; max-width:1400px; margin:0 auto; }
+  .editor { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; height:fit-content; position:sticky; top:20px; max-height:calc(100vh - 40px); overflow:auto; }
+  .editor h1 { font-size:18px; margin:0 0 12px; }
+  .editor h2 { font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:18px 0 8px; }
+  label { display:block; font-size:12px; color:var(--muted); margin:8px 0 3px; }
+  input, textarea, select { width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; font:inherit; font-size:14px; background:#fff; }
+  textarea { resize:vertical; min-height:56px; }
+  .row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .item { display:grid; grid-template-columns:1fr 60px 100px 28px; gap:6px; margin-bottom:6px; align-items:center; }
+  .item button { padding:4px; }
+  button { cursor:pointer; border:1px solid var(--line); background:#fff; border-radius:8px; padding:8px 12px; font:inherit; font-size:14px; }
+  button:hover { background:#f9fafb; }
+  button.primary { background:var(--brand); color:#fff; border-color:var(--brand); }
+  button.primary:hover { background:#1d4ed8; }
+  button.danger { color:var(--danger); }
+  .actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+  .saved { margin-top:8px; display:flex; flex-direction:column; gap:6px; }
+  .saved-item { display:flex; justify-content:space-between; align-items:center; gap:8px; border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:13px; }
+  .saved-item .meta { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .saved-item .meta small { color:var(--muted); display:block; }
+  .saved-item .btns { display:flex; gap:4px; flex-shrink:0; }
+  .saved-item button { padding:4px 8px; font-size:12px; }
+  .empty { color:var(--muted); font-size:13px; }
+
+  /* Invoice preview (A4-like) */
+  .preview { display:flex; justify-content:center; }
+  #invoice { background:#fff; width:210mm; min-height:297mm; padding:16mm; box-shadow:0 2px 12px rgba(0,0,0,.1); font-size:13px; line-height:1.45; }
+  .inv-head { display:flex; justify-content:space-between; align-items:flex-start; gap:20px; }
+  .inv-logo { max-height:70px; max-width:200px; margin-bottom:8px; display:block; }
+  .inv-title { font-size:30px; font-weight:700; letter-spacing:.04em; color:var(--brand); text-align:right; }
+  .inv-meta { text-align:right; margin-top:6px; }
+  .inv-meta div { margin-bottom:2px; }
+  .muted { color:var(--muted); }
+  .pre { white-space:pre-line; }
+  .parties { display:grid; grid-template-columns:1fr 1fr; gap:24px; margin:26px 0; }
+  .parties h4 { margin:0 0 4px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+  table { width:100%; border-collapse:collapse; }
+  th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); border-bottom:2px solid var(--ink); padding:8px 6px; }
+  td { padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th.r, td.r { text-align:right; }
+  .totals { margin-left:auto; width:280px; margin-top:14px; }
+  .totals div { display:flex; justify-content:space-between; padding:4px 0; }
+  .totals .grand { border-top:2px solid var(--ink); margin-top:6px; padding-top:8px; font-size:16px; font-weight:700; }
+  .foot { margin-top:30px; display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+  .foot h4 { margin:0 0 4px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+
+  @media (max-width:1000px) { .app { grid-template-columns:1fr; } .editor { position:static; max-height:none; } .preview { overflow:auto; justify-content:flex-start; } }
+  @page { size:A4; margin:0; }
+  @media print {
+    body { background:#fff; }
+    .editor { display:none !important; }
+    .app { display:block; padding:0; max-width:none; }
+    .preview { display:block; overflow:visible; }
+    #invoice { box-shadow:none; width:auto; min-height:auto; margin:0; padding:14mm; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="editor">
+    <h1>🧾 Invoice Maker</h1>
+
+    <h2>Detail Invoice</h2>
+    <div class="row">
+      <div><label>Nomor Invoice</label><input id="number" placeholder="INV-001"></div>
+      <div><label>Mata Uang</label>
+        <select id="currency">
+          <option value="IDR">IDR (Rp)</option><option value="USD">USD ($)</option>
+          <option value="EUR">EUR (€)</option><option value="SGD">SGD (S$)</option>
+          <option value="MYR">MYR (RM)</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div><label>Tanggal</label><input type="date" id="date"></div>
+      <div><label>Jatuh Tempo</label><input type="date" id="due"></div>
+    </div>
+
+    <h2>Penerbit (Perusahaan)</h2>
+    <label>Nama Perusahaan</label><input id="iName">
+    <label>Alamat</label><textarea id="iAddress"></textarea>
+    <div class="row">
+      <div><label>Email / Telepon</label><input id="iContact"></div>
+      <div><label>NPWP / Tax ID</label><input id="iTax"></div>
+    </div>
+    <label>Logo (opsional)</label><input type="file" id="logo" accept="image/*">
+
+    <h2>Ditagihkan Kepada</h2>
+    <label>Nama Perusahaan / Klien</label><input id="cName">
+    <label>Alamat</label><textarea id="cAddress"></textarea>
+
+    <h2>Item</h2>
+    <div id="itemsEditor"></div>
+    <button id="addItem">+ Tambah item</button>
+
+    <div class="row">
+      <div><label>Pajak / PPN (%)</label><input type="number" id="taxRate" min="0" step="0.01" value="0"></div>
+      <div><label>Diskon (nominal)</label><input type="number" id="discount" min="0" step="any" value="0"></div>
+    </div>
+    <label>Info Pembayaran</label><textarea id="payment" placeholder="Bank BCA 1234567890 a.n. ..."></textarea>
+    <label>Catatan</label><textarea id="notes" placeholder="Terima kasih atas kerja samanya."></textarea>
+
+    <div class="actions">
+      <button class="primary" id="btnPrint">🖨️ Cetak / Simpan PDF</button>
+      <button id="btnSave">💾 Simpan</button>
+      <button id="btnNew">Invoice baru</button>
+    </div>
+
+    <h2>Invoice Tersimpan</h2>
+    <div id="saved" class="saved"></div>
+    <div class="actions">
+      <button id="btnExport">Export JSON</button>
+      <button id="btnImport">Import JSON</button>
+      <input type="file" id="importFile" accept="application/json" hidden>
+    </div>
+    <p class="empty">Data disimpan di browser kamu (localStorage). Gunakan Export JSON untuk backup.</p>
+  </aside>
+
+  <main class="preview"><div id="invoice"></div></main>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const KEY = 'invoice_maker_v1';
+const FIELDS = ['number','date','due','currency','iName','iAddress','iContact','iTax','cName','cAddress','taxRate','discount','notes','payment'];
+let items = [{ desc:'', qty:1, price:0 }];
+let logo = '';
+let currentId = null;
+
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const today = () => new Date().toISOString().slice(0,10);
+const fmtDate = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('id-ID', { day:'numeric', month:'long', year:'numeric' }) : '';
+const money = (n, cur) => new Intl.NumberFormat('id-ID', { style:'currency', currency:cur, maximumFractionDigits: cur === 'IDR' ? 0 : 2 }).format(n || 0);
+
+function getState() {
+  const s = { id: currentId, logo, items: items.map(i => ({...i})) };
+  FIELDS.forEach(f => s[f] = $(f).value);
+  return s;
+}
+function setState(s) {
+  currentId = s.id || null;
+  logo = s.logo || '';
+  items = (s.items && s.items.length) ? s.items.map(i => ({...i})) : [{ desc:'', qty:1, price:0 }];
+  FIELDS.forEach(f => $(f).value = s[f] ?? '');
+  $('logo').value = '';
+  renderItemsEditor();
+  render();
+}
+function blankState() {
+  const list = loadAll();
+  const next = String(list.length + 1).padStart(3, '0');
+  return { id:null, number:'INV-' + next, date:today(), due:'', currency:'IDR', taxRate:'0', discount:'0',
+           iName:'', iAddress:'', iContact:'', iTax:'', cName:'', cAddress:'', notes:'', payment:'', logo:'', items:[] };
+}
+
+function renderItemsEditor() {
+  const box = $('itemsEditor');
+  box.innerHTML = '';
+  items.forEach((it, idx) => {
+    const row = document.createElement('div');
+    row.className = 'item';
+    row.innerHTML = `
+      <input placeholder="Deskripsi" value="${esc(it.desc)}">
+      <input type="number" min="0" step="any" value="${it.qty}" title="Qty">
+      <input type="number" min="0" step="any" value="${it.price}" title="Harga">
+      <button class="danger" title="Hapus">✕</button>`;
+    const [d, q, p, x] = row.children;
+    d.oninput = () => { it.desc = d.value; render(); };
+    q.oninput = () => { it.qty = parseFloat(q.value) || 0; render(); };
+    p.oninput = () => { it.price = parseFloat(p.value) || 0; render(); };
+    x.onclick = () => { items.splice(idx, 1); if (!items.length) items.push({desc:'',qty:1,price:0}); renderItemsEditor(); render(); };
+    box.appendChild(row);
+  });
+}
+
+function render() {
+  const s = getState();
+  const cur = s.currency;
+  const subtotal = items.reduce((a, i) => a + (i.qty * i.price), 0);
+  const discount = parseFloat(s.discount) || 0;
+  const taxRate = parseFloat(s.taxRate) || 0;
+  const taxable = Math.max(subtotal - discount, 0);
+  const tax = taxable * taxRate / 100;
+  const total = taxable + tax;
+
+  $('invoice').innerHTML = `
+    <div class="inv-head">
+      <div>
+        ${logo ? `<img class="inv-logo" src="${logo}" alt="logo">` : ''}
+        <strong style="font-size:16px">${esc(s.iName) || '<span class="muted">Nama Perusahaan</span>'}</strong>
+        <div class="pre muted">${esc(s.iAddress)}</div>
+        ${s.iContact ? `<div class="muted">${esc(s.iContact)}</div>` : ''}
+        ${s.iTax ? `<div class="muted">NPWP/Tax ID: ${esc(s.iTax)}</div>` : ''}
+      </div>
+      <div>
+        <div class="inv-title">INVOICE</div>
+        <div class="inv-meta">
+          <div><span class="muted">No:</span> <strong>${esc(s.number)}</strong></div>
+          <div><span class="muted">Tanggal:</span> ${fmtDate(s.date)}</div>
+          ${s.due ? `<div><span class="muted">Jatuh tempo:</span> ${fmtDate(s.due)}</div>` : ''}
+        </div>
+      </div>
+    </div>
+
+    <div class="parties">
+      <div>
+        <h4>Ditagihkan kepada</h4>
+        <strong>${esc(s.cName) || '<span class="muted">Nama Klien</span>'}</strong>
+        <div class="pre muted">${esc(s.cAddress)}</div>
+      </div>
+    </div>
+
+    <table>
+      <thead><tr><th>Deskripsi</th><th class="r">Qty</th><th class="r">Harga</th><th class="r">Jumlah</th></tr></thead>
+      <tbody>
+        ${items.map(i => `<tr>
+          <td class="pre">${esc(i.desc)}</td>
+          <td class="r">${i.qty}</td>
+          <td class="r">${money(i.price, cur)}</td>
+          <td class="r">${money(i.qty * i.price, cur)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+
+    <div class="totals">
+      <div><span>Subtotal</span><span>${money(subtotal, cur)}</span></div>
+      ${discount ? `<div><span>Diskon</span><span>- ${money(discount, cur)}</span></div>` : ''}
+      ${taxRate ? `<div><span>Pajak (${taxRate}%)</span><span>${money(tax, cur)}</span></div>` : ''}
+      <div class="grand"><span>Total</span><span>${money(total, cur)}</span></div>
+    </div>
+
+    <div class="foot">
+      <div>${s.payment ? `<h4>Pembayaran</h4><div class="pre">${esc(s.payment)}</div>` : ''}</div>
+      <div>${s.notes ? `<h4>Catatan</h4><div class="pre">${esc(s.notes)}</div>` : ''}</div>
+    </div>`;
+  document.title = s.number ? `Invoice ${s.number}` : 'Invoice Maker';
+}
+
+/* ---------- storage ---------- */
+function loadAll() {
+  try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; }
+}
+function saveAll(list) {
+  try { localStorage.setItem(KEY, JSON.stringify(list)); }
+  catch { alert('Gagal menyimpan: penyimpanan browser penuh atau diblokir. Coba Export JSON.'); }
+}
+function calcTotal(s) {
+  const sub = (s.items || []).reduce((a, i) => a + i.qty * i.price, 0);
+  const t = Math.max(sub - (parseFloat(s.discount) || 0), 0);
+  return t + t * (parseFloat(s.taxRate) || 0) / 100;
+}
+function renderSaved() {
+  const list = loadAll();
+  const box = $('saved');
+  if (!list.length) { box.innerHTML = '<div class="empty">Belum ada invoice tersimpan.</div>'; return; }
+  box.innerHTML = '';
+  list.slice().reverse().forEach(s => {
+    const el = document.createElement('div');
+    el.className = 'saved-item';
+    el.innerHTML = `<div class="meta"><strong>${esc(s.number) || '(tanpa nomor)'}</strong> — ${esc(s.cName) || '-'}
+      <small>${money(calcTotal(s), s.currency)} · ${fmtDate(s.date)}</small></div>
+      <div class="btns"><button>Buka</button><button class="danger">Hapus</button></div>`;
+    const [open, del] = el.querySelectorAll('button');
+    open.onclick = () => setState(s);
+    del.onclick = () => {
+      if (!confirm('Hapus invoice ini?')) return;
+      saveAll(loadAll().filter(x => x.id !== s.id));
+      if (currentId === s.id) currentId = null;
+      renderSaved();
+    };
+    box.appendChild(el);
+  });
+}
+
+/* ---------- events ---------- */
+FIELDS.forEach(f => $(f).addEventListener('input', render));
+$('addItem').onclick = () => { items.push({ desc:'', qty:1, price:0 }); renderItemsEditor(); render(); };
+$('logo').onchange = e => {
+  const file = e.target.files[0];
+  if (!file) { logo = ''; render(); return; }
+  const r = new FileReader();
+  r.onload = () => { logo = r.result; render(); };
+  r.readAsDataURL(file);
+};
+$('btnPrint').onclick = () => window.print();
+$('btnSave').onclick = () => {
+  const s = getState();
+  const list = loadAll();
+  if (!s.id) s.id = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
+  currentId = s.id;
+  const i = list.findIndex(x => x.id === s.id);
+  if (i >= 0) list[i] = s; else list.push(s);
+  saveAll(list);
+  renderSaved();
+};
+$('btnNew').onclick = () => setState(blankState());
+$('btnExport').onclick = () => {
+  const blob = new Blob([JSON.stringify(loadAll(), null, 2)], { type:'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `invoices-${today()}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+$('btnImport').onclick = () => $('importFile').click();
+$('importFile').onchange = e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const data = JSON.parse(r.result);
+      if (!Array.isArray(data)) throw new Error();
+      const list = loadAll();
+      data.forEach(s => {
+        if (!s || !Array.isArray(s.items)) return;
+        if (!s.id) s.id = String(Date.now() + Math.random());
+        const i = list.findIndex(x => x.id === s.id);
+        if (i >= 0) list[i] = s; else list.push(s);
+      });
+      saveAll(list);
+      renderSaved();
+    } catch { alert('File JSON tidak valid.'); }
+    $('importFile').value = '';
+  };
+  r.readAsText(file);
+};
+
+/* ---------- init ---------- */
+setState(blankState());
+renderSaved();
+</script>
+</body>
+</html>
